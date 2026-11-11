@@ -39,7 +39,31 @@ const URL = 'file://' + path.join(__dirname, '..', 'dist', 'index.html');
   const acc = await page.locator('.bs-score strong').textContent();
   if (!/100%/.test(acc)) throw new Error('accuracy should read 100% after one correct triage, got ' + acc);
 
-  // New shift regenerates the environment.
+  // --- SPL search view ---
+  await page.click('.bs-subtab[data-view="search"]'); await page.waitForTimeout(80);
+  if (!(await page.locator('#bsSpl').count())) throw new Error('SPL search box did not render');
+
+  // Run a stats pipeline and assert a statistics table comes back.
+  await page.fill('#bsSpl', 'index=auth action=failure | stats count by user | sort -count');
+  await page.click('#bsSplRun'); await page.waitForTimeout(100);
+  if (!(await page.locator('.bs-badge.tbl').count())) throw new Error('stats query did not produce a statistics table');
+  const headers = await page.$$eval('.bs-table th', ths => ths.map(t => t.textContent));
+  if (!(headers.includes('user') && headers.includes('count'))) throw new Error('stats table missing expected columns: ' + headers.join(','));
+
+  // An events query returns raw events.
+  await page.fill('#bsSpl', 'index=auth action=failure'); await page.click('#bsSplRun'); await page.waitForTimeout(100);
+  if (!(await page.locator('.bs-badge.ev').count())) throw new Error('search did not return events');
+
+  // A bad command surfaces an error, not a crash.
+  await page.fill('#bsSpl', '| frobnicate'); await page.click('#bsSplRun'); await page.waitForTimeout(80);
+  if (!(await page.locator('.bs-spl-error').count())) throw new Error('unknown command should show an inline error');
+
+  // An example chip loads and runs a query.
+  await page.locator('.bs-ex').first().click(); await page.waitForTimeout(100);
+  if (!(await page.locator('.bs-table').count())) throw new Error('example query did not run');
+
+  // Back to triage, then new shift resets the score.
+  await page.click('.bs-subtab[data-view="triage"]'); await page.waitForTimeout(60);
   await page.click('#bsNewShift'); await page.waitForTimeout(80);
   if ((await page.locator('.bs-score strong').textContent()) !== '—') throw new Error('new shift should reset the accuracy score');
 

@@ -8,7 +8,7 @@ const path = require('path');
 const read = f => fs.readFileSync(path.join(__dirname, f), 'utf8');
 
 // Order matters: a module must be defined before anything that requires it runs.
-const MODULES = ['src/rng.js', 'src/catalog.js', 'src/model.js', 'src/ui.js'];
+const MODULES = ['src/rng.js', 'src/catalog.js', 'src/model.js', 'src/spl.js', 'src/ui.js'];
 const wrap = f => `__def(${JSON.stringify('./' + path.basename(f, '.js'))}, function(module, exports, require){\n${read(f)}\n});`;
 
 const bundle = `

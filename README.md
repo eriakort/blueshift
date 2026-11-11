@@ -20,6 +20,28 @@ force, C2 beacons, phishing, privilege escalation, data exfiltration, MFA
 fatigue, impossible travel, and more — each backed by raw log lines and a hidden
 verdict. You triage; it scores your accuracy.
 
+It also ships a **Splunk-like SPL search** over the shift's event index, so you
+can hunt and pivot the way you would in a real SIEM.
+
+## SPL search
+
+The **Search** tab runs a pipe-based query language over the indexed events:
+
+```spl
+index=auth action=failure | stats count dc(host) as hosts by user | sort -count
+signature=c2_beacon OR signature=large_outbound_transfer | table time host dest_ip bytes
+index=dlp | eval mb = round(bytes/1048576, 1) | sort -mb | table host mb dest_ip
+index=auth | top 5 user
+```
+
+Supported commands: an implicit `search` (field=value, `!=`, `<` `>` `<=` `>=`,
+wildcards `*`, `AND`/`OR`/`NOT`, parentheses, quoted phrases, bare terms) then a
+pipeline of `stats`, `where`, `eval`, `table`/`fields`, `rename`, `sort`,
+`head`/`tail`, `top`/`rare`, `dedup`. Functions include `count`, `dc`, `sum`,
+`avg`, `min`, `max`, `values`, `list`, `round`, `lower`, `upper`, `len`, `if`,
+`coalesce`, `like`, `match`, `isnull`, `isnotnull`. Press **Ctrl/⌘+Enter** to run.
+The whole engine is a pure, separately-tested module (`src/spl.js`).
+
 ## Run it
 
 No build step is required to *use* it — just open the built page:
@@ -45,7 +67,8 @@ self-contained HTML file with zero runtime dependencies:
 |------|----------------|
 | `src/rng.js` | Seeded PRNG — the whole world is a function of one seed (reproducible). |
 | `src/catalog.js` | Static building blocks: asset pools and the detection **archetypes** (each with a ground-truth verdict distribution and MITRE mapping). |
-| `src/model.js` | `generateEnvironment(seed)` → assets + correlated alerts; plus query, triage and scoring helpers. Pure and fully unit-tested. |
+| `src/model.js` | `generateEnvironment(seed)` → assets + correlated alerts + a structured **event index**; plus query, triage and scoring helpers. Pure and fully unit-tested. |
+| `src/spl.js` | The SPL search engine: an implicit `search` plus a pipeline of commands (`stats`, `where`, `eval`, `table`, `sort`, `top`, …). Pure and separately tested. |
 | `src/ui.js` | The platform shell + SIEM console. A thin presentation layer over the model. |
 | `src/styles.css` | The dark SOC theme. |
 | `build.js` | Inlines the tested modules + UI + styles into `dist/index.html` via a tiny CommonJS shim — so the shipped page is byte-for-byte a function of source (no drift). |

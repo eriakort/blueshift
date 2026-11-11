@@ -103,6 +103,40 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 .bs-empty { border: 1px dashed var(--line); border-radius: 10px; padding: 26px; text-align: center; color: var(--muted); }
 
 @media (max-width: 1000px) { .bs-shell { grid-template-columns: 1fr; } .bs-rail { flex-direction: row; overflow-x: auto; align-items: center; } .bs-rail-label, .bs-rail-foot { display: none; } .bs-split { grid-template-columns: 1fr; } .bs-kpis { grid-template-columns: 1fr 1fr; } .bs-asset-card { grid-template-columns: 1fr 1fr; } }
+
+/* sub-tabs */
+.bs-subtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 14px 0 16px; }
+.bs-subtab { background: none; border: none; color: var(--muted); padding: 9px 14px; cursor: pointer; font-size: 13px; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.bs-subtab:hover { color: var(--ink); }
+.bs-subtab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* SPL search */
+.bs-spl-bar { display: flex; gap: 10px; align-items: stretch; }
+.bs-spl-prompt { display: flex; align-items: center; font-family: var(--mono); font-size: 12px; color: var(--accent-2); background: var(--panel-2); border: 1px solid var(--line); border-right: none; border-radius: 9px 0 0 9px; padding: 0 12px; letter-spacing: .05em; }
+#bsSpl { flex: 1; background: var(--panel-2); color: var(--ink); border: 1px solid var(--line); border-left: none; border-radius: 0; padding: 11px 12px; font-family: var(--mono); font-size: 13px; resize: vertical; line-height: 1.5; }
+#bsSpl:focus { outline: none; border-color: var(--accent); }
+.bs-btn.primary { background: var(--accent); color: #06101f; border-color: var(--accent); font-weight: 600; border-radius: 0 9px 9px 0; white-space: nowrap; }
+.bs-spl-meta { display: flex; justify-content: space-between; align-items: center; margin: 8px 2px; font-size: 12px; color: var(--muted); }
+.bs-examples { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.bs-ex { background: var(--panel); border: 1px solid var(--line); color: var(--muted); border-radius: 8px; padding: 6px 10px; font-family: var(--mono); font-size: 11px; cursor: pointer; }
+.bs-ex:hover { border-color: var(--accent); color: var(--ink); }
+.bs-cheat { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 6px 14px; margin-bottom: 14px; }
+.bs-cheat-row { display: grid; grid-template-columns: 170px 1fr; gap: 14px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.bs-cheat-row:last-child { border-bottom: none; }
+.bs-cheat-row > code { font-family: var(--mono); font-size: 12px; color: var(--accent-2); }
+.bs-cheat-row b { font-family: var(--mono); font-size: 12px; color: var(--ink); display: block; }
+.bs-cheat-row small { color: var(--muted); font-size: 12px; }
+.bs-spl-error { border: 1px solid color-mix(in srgb, var(--critical) 45%, transparent); background: color-mix(in srgb, var(--critical) 12%, transparent); color: #ffd4d9; border-radius: 9px; padding: 12px 14px; font-family: var(--mono); font-size: 13px; }
+.bs-result-head { display: flex; gap: 10px; align-items: center; margin: 6px 2px 8px; font-size: 12px; color: var(--muted); }
+.bs-badge { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; padding: 3px 8px; border-radius: 6px; }
+.bs-badge.ev { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
+.bs-badge.tbl { background: color-mix(in srgb, var(--accent-2) 20%, transparent); color: var(--accent-2); }
+.bs-table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 10px; max-height: calc(100vh - 360px); }
+.bs-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.bs-table th { position: sticky; top: 0; background: var(--panel-2); text-align: left; padding: 9px 12px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--line); white-space: nowrap; font-family: var(--mono); }
+.bs-table td { padding: 8px 12px; border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent); font-family: var(--mono); white-space: nowrap; color: #cfe0f5; }
+.bs-table td.num { text-align: right; color: var(--accent-2); }
+.bs-table tbody tr:hover { background: var(--raise); }
 </style>
 </head>
 <body><div id="app"></div><script>
@@ -415,11 +449,69 @@ function buildAlerts(rng, assets, n) {
   return alerts.sort((a, b) => C.SEV_RANK[b.severity] - C.SEV_RANK[a.severity] || a.minutesAgo - b.minutesAgo);
 }
 
+// How each detection archetype projects onto structured index events.
+const EV_MAP = {
+  'ssh-brute-force': { index: 'auth', sourcetype: 'linux_secure', dest_port: 22, signature: 'ssh_auth_failure', action: 'failure' },
+  'rdp-brute-force': { index: 'auth', sourcetype: 'wineventlog:security', dest_port: 3389, signature: 'win_logon_failure', action: 'failure' },
+  'port-scan': { index: 'network', sourcetype: 'pan:traffic', dest_port: 0, signature: 'port_scan', action: 'blocked' },
+  'c2-beacon': { index: 'network', sourcetype: 'proxy', dest_port: 443, signature: 'c2_beacon', action: 'allowed' },
+  'phishing-click': { index: 'proxy', sourcetype: 'proxy', dest_port: 443, signature: 'phishing_url_click', action: 'allowed' },
+  'suspicious-powershell': { index: 'endpoint', sourcetype: 'edr:process', dest_port: 0, signature: 'encoded_powershell', action: 'allowed' },
+  'priv-esc': { index: 'auth', sourcetype: 'wineventlog:security', dest_port: 0, signature: 'privilege_assigned', action: 'success' },
+  'data-exfil': { index: 'dlp', sourcetype: 'dlp:transfer', dest_port: 443, signature: 'large_outbound_transfer', action: 'allowed' },
+  'impossible-travel': { index: 'identity', sourcetype: 'idp:signin', dest_port: 443, signature: 'impossible_travel', action: 'success' },
+  'mfa-fatigue': { index: 'identity', sourcetype: 'idp:mfa', dest_port: 443, signature: 'mfa_push_flood', action: 'denied' },
+  'av-detection': { index: 'endpoint', sourcetype: 'av:detection', dest_port: 0, signature: 'malware_detected', action: 'blocked' },
+  'new-admin-account': { index: 'auth', sourcetype: 'wineventlog:security', dest_port: 0, signature: 'account_created', action: 'success' }
+};
+const NOISE = [
+  { index: 'auth', sourcetype: 'linux_secure', signature: 'ssh_auth_success', action: 'success', port: 22 },
+  { index: 'auth', sourcetype: 'wineventlog:security', signature: 'win_logon_success', action: 'success', port: 0 },
+  { index: 'network', sourcetype: 'pan:traffic', signature: 'traffic_allow', action: 'allowed', port: 443 },
+  { index: 'network', sourcetype: 'pan:traffic', signature: 'traffic_allow', action: 'allowed', port: 80 },
+  { index: 'network', sourcetype: 'dns', signature: 'dns_query', action: 'allowed', port: 53 },
+  { index: 'proxy', sourcetype: 'proxy', signature: 'web_browse', action: 'allowed', port: 443 },
+  { index: 'identity', sourcetype: 'idp:signin', signature: 'signin_success', action: 'success', port: 443 },
+  { index: 'endpoint', sourcetype: 'edr:process', signature: 'process_start', action: 'allowed', port: 0 }
+];
+const clock = minsAgo => { const t = (1440 + (615 - minsAgo)) % 1440; return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); };
+
+function buildEvents(rng, assets, alerts) {
+  const events = [];
+  const push = e => events.push({ ...e, _time: e._time, time: clock(e._time) });
+  // Alert-linked events: the raw lines, structured and field-extracted.
+  for (const a of alerts) {
+    const m = EV_MAP[a.archetype] || { index: 'misc', sourcetype: 'misc', dest_port: 0, signature: a.archetype, action: 'allowed' };
+    a.events.forEach((raw, i) => push({
+      _time: a.minutesAgo + i, _raw: raw, index: m.index, sourcetype: m.sourcetype,
+      host: a.asset.hostname, source: m.sourcetype, user: a.user,
+      src_ip: (raw.match(/\b(\d{1,3}(?:\.\d{1,3}){3})\b/) || [])[1] || a.asset.ip,
+      dest_ip: a.asset.ip, dest_port: m.dest_port, action: m.action,
+      signature: m.signature, bytes: a.archetype === 'data-exfil' ? rng.int(200000, 5000000) : rng.int(120, 90000),
+      severity: a.severity, alert_id: a.id, technique: a.techniqueId
+    }));
+  }
+  // Background noise so stats / top / searches return realistic distributions.
+  const noiseN = 180 + rng.int(0, 90);
+  for (let i = 0; i < noiseN; i++) {
+    const n = rng.pick(NOISE), asset = rng.pick(assets), user = `${rng.pick(C.FIRST)}.${rng.pick(C.LAST)}`;
+    const mins = rng.int(1, 720);
+    push({
+      _time: mins, index: n.index, sourcetype: n.sourcetype, host: asset.hostname, source: n.sourcetype, user,
+      src_ip: `10.${rng.int(0, 7)}.${rng.int(1, 8)}.${rng.int(10, 240)}`, dest_ip: asset.ip, dest_port: n.port,
+      action: n.action, signature: n.signature, bytes: rng.int(80, 120000), severity: 'info', alert_id: null, technique: null,
+      _raw: `${n.sourcetype}: ${n.signature} user=${user} host=${asset.hostname} action=${n.action}`
+    });
+  }
+  return events.sort((a, b) => a._time - b._time);
+}
+
 function generateEnvironment(seed = 1, opts = {}) {
   const rng = makeRng(seed);
   const assets = buildAssets(rng, opts.assets || 26);
   const alerts = buildAlerts(rng, assets, opts.alerts || 16);
-  return { seed, assets, alerts, meta: { version: 1 } };
+  const events = buildEvents(rng, assets, alerts);
+  return { seed, assets, alerts, events, meta: { version: 1 } };
 }
 
 // ---- queries ----
@@ -468,12 +560,339 @@ function acknowledgeAlert(env, alertId) {
 module.exports = { generateEnvironment, filterAlerts, summarize, triageAlert, reopenAlert, acknowledgeAlert, SEV_RANK: C.SEV_RANK, VERDICTS: C.VERDICTS };
 
 });
+__def("./spl", function(module, exports, require){
+// BlueShift — SPL (Search Processing Language): a Splunk-like, pipe-based query
+// engine over the event index. Pure and deterministic. Supports an implicit
+// `search` first stage plus a pipeline of commands:
+//   search  stats  where  eval  table/fields  rename  sort  head/tail
+//   top  rare  dedup
+// with the common functions (count, dc, sum, avg, min, max, values, list,
+// round, lower, upper, len, if, coalesce, like, match, isnull, isnotnull, ...).
+
+/* ----------------------------- shared helpers ----------------------------- */
+const isNumeric = v => v !== '' && v != null && !isNaN(Number(v));
+const num = v => Number(v);
+const str = v => v == null ? '' : String(v);
+const wildcardToRe = (p, flags = 'i') => new RegExp('^' + str(p).replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$', flags);
+function splitTopLevel(s, sep) {               // split on sep outside quotes/parens
+  const out = []; let depth = 0, q = null, cur = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (q) { cur += c; if (c === q) q = null; continue; }
+    if (c === '"' || c === "'") { q = c; cur += c; continue; }
+    if (c === '(') depth++; if (c === ')') depth--;
+    if (c === sep && depth === 0) { out.push(cur); cur = ''; continue; }
+    cur += c;
+  }
+  if (cur.trim() !== '' || out.length) out.push(cur);
+  return out;
+}
+
+/* ----------------------------- search parser ------------------------------ */
+// Tokenize a search expression into words, quoted strings, operators and parens.
+function lexSearch(s) {
+  const toks = []; let i = 0;
+  const two = ['!=', '<=', '>=', '=~'];
+  while (i < s.length) {
+    const c = s[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (c === '(' || c === ')') { toks.push({ t: c }); i++; continue; }
+    if (c === '"' || c === "'") { let j = i + 1, v = ''; while (j < s.length && s[j] !== c) v += s[j++]; i = j + 1; toks.push({ t: 'phrase', v }); continue; }
+    const t2 = s.slice(i, i + 2);
+    if (two.includes(t2)) { toks.push({ t: 'op', v: t2 }); i += 2; continue; }
+    if (c === '=' || c === '<' || c === '>') { toks.push({ t: 'op', v: c }); i++; continue; }
+    let j = i, w = '';
+    while (j < s.length && !/[\s()"'=<>]/.test(s[j])) { w += s[j++]; }
+    i = j;
+    const up = w.toUpperCase();
+    if (up === 'AND' || up === 'OR' || up === 'NOT') toks.push({ t: up });
+    else toks.push({ t: 'word', v: w });
+  }
+  return toks;
+}
+function parseSearch(expr) {
+  const toks = lexSearch(expr); let p = 0;
+  const peek = () => toks[p], eat = () => toks[p++];
+  function parseOr() { let l = parseAnd(); while (peek() && peek().t === 'OR') { eat(); const r = parseAnd(); const a = l, b = r; l = ev => a(ev) || b(ev); } return l; }
+  function parseAnd() {
+    let l = parseNot();
+    while (peek() && peek().t !== 'OR' && peek().t !== ')') {
+      if (peek().t === 'AND') eat();
+      const r = parseNot(); const a = l, b = r; l = ev => a(ev) && b(ev);
+    }
+    return l;
+  }
+  function parseNot() { if (peek() && peek().t === 'NOT') { eat(); const a = parseAtom(); return ev => !a(ev); } return parseAtom(); }
+  function parseAtom() {
+    const tk = peek();
+    if (!tk) return () => true;
+    if (tk.t === '(') { eat(); const e = parseOr(); if (peek() && peek().t === ')') eat(); return e; }
+    if (tk.t === 'word' && toks[p + 1] && toks[p + 1].t === 'op') {
+      const field = eat().v, op = eat().v;
+      const vt = peek() && (peek().t === 'word' || peek().t === 'phrase') ? eat() : { v: '' };
+      return comparison(field, op, vt.v);
+    }
+    // bare term / phrase -> match against _raw (and any field value)
+    const term = (tk.t === 'phrase' || tk.t === 'word') ? eat().v : (eat(), '');
+    const re = /\*/.test(term) ? wildcardToRe('*' + term + '*') : null;
+    const low = term.toLowerCase();
+    return ev => { const hay = str(ev._raw || '').toLowerCase() + ' ' + Object.values(ev).map(str).join(' ').toLowerCase(); return re ? re.test(ev._raw || '') || Object.values(ev).some(v => re.test(str(v))) : hay.includes(low); };
+  }
+  function comparison(field, op, value) {
+    const wild = /\*|\?/.test(value);
+    const re = wild ? wildcardToRe(value) : null;
+    return ev => {
+      const has = Object.prototype.hasOwnProperty.call(ev, field);
+      if (!has) return op === '!=' ? false : false;
+      const fv = ev[field];
+      if (op === '=' || op === '=~') return re ? re.test(str(fv)) : (isNumeric(fv) && isNumeric(value) ? num(fv) === num(value) : str(fv).toLowerCase() === str(value).toLowerCase());
+      if (op === '!=') return !(re ? re.test(str(fv)) : (isNumeric(fv) && isNumeric(value) ? num(fv) === num(value) : str(fv).toLowerCase() === str(value).toLowerCase()));
+      if (op === '<') return num(fv) < num(value);
+      if (op === '>') return num(fv) > num(value);
+      if (op === '<=') return num(fv) <= num(value);
+      if (op === '>=') return num(fv) >= num(value);
+      return false;
+    };
+  }
+  const pred = parseOr();
+  return typeof pred === 'function' ? pred : (() => true);
+}
+
+/* ------------------------- eval / where expressions ----------------------- */
+function lexExpr(s) {
+  const toks = []; let i = 0;
+  const two = ['==', '!=', '<=', '>='];
+  while (i < s.length) {
+    const c = s[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (c === '"' || c === "'") { let j = i + 1, v = ''; while (j < s.length && s[j] !== c) v += s[j++]; i = j + 1; toks.push({ t: 'str', v }); continue; }
+    if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(s[i + 1]))) { let j = i, v = ''; while (j < s.length && /[0-9.]/.test(s[j])) v += s[j++]; i = j; toks.push({ t: 'num', v: Number(v) }); continue; }
+    const t2 = s.slice(i, i + 2);
+    if (two.includes(t2)) { toks.push({ t: 'op', v: t2 }); i += 2; continue; }
+    if ('+-*/.()<>=,'.includes(c)) { toks.push({ t: 'op', v: c }); i++; continue; }
+    let j = i, w = '';
+    while (j < s.length && /[A-Za-z0-9_]/.test(s[j])) w += s[j++];
+    if (j === i) { i++; continue; }
+    i = j;
+    const up = w.toUpperCase();
+    if (up === 'AND' || up === 'OR' || up === 'NOT') toks.push({ t: 'op', v: up === 'AND' ? '&&' : up === 'OR' ? '||' : '!' });
+    else toks.push({ t: 'id', v: w });
+  }
+  return toks;
+}
+function parseExpr(s) {
+  const toks = lexExpr(s); let p = 0;
+  const peek = () => toks[p], eat = () => toks[p++];
+  const isOp = v => peek() && peek().t === 'op' && peek().v === v;
+  function or() { let l = and(); while (isOp('||')) { eat(); const r = and(); l = { op: '||', l, r }; } return l; }
+  function and() { let l = not(); while (isOp('&&')) { eat(); const r = not(); l = { op: '&&', l, r }; } return l; }
+  function not() { if (isOp('!')) { eat(); return { op: '!', r: not() }; } return cmp(); }
+  function cmp() { let l = add(); while (peek() && peek().t === 'op' && ['==', '!=', '<', '>', '<=', '>=', '='].includes(peek().v)) { const op = eat().v; const r = add(); l = { op: op === '=' ? '==' : op, l, r }; } return l; }
+  function add() { let l = mul(); while (peek() && peek().t === 'op' && ['+', '-', '.'].includes(peek().v)) { const op = eat().v; const r = mul(); l = { op, l, r }; } return l; }
+  function mul() { let l = unary(); while (peek() && peek().t === 'op' && ['*', '/'].includes(peek().v)) { const op = eat().v; const r = unary(); l = { op, l, r }; } return l; }
+  function unary() { if (isOp('-')) { eat(); return { op: 'neg', r: unary() }; } return primary(); }
+  function primary() {
+    const tk = peek();
+    if (!tk) return { lit: null };
+    if (tk.t === 'num') { eat(); return { lit: tk.v }; }
+    if (tk.t === 'str') { eat(); return { lit: tk.v }; }
+    if (isOp('(')) { eat(); const e = or(); if (isOp(')')) eat(); return e; }
+    if (tk.t === 'id') {
+      const name = eat().v;
+      if (isOp('(')) { eat(); const args = []; if (!isOp(')')) { args.push(or()); while (isOp(',')) { eat(); args.push(or()); } } if (isOp(')')) eat(); return { fn: name.toLowerCase(), args }; }
+      return { field: name };
+    }
+    eat(); return { lit: null };
+  }
+  return or();
+}
+function evalExpr(ast, row) {
+  if (ast == null) return null;
+  if ('lit' in ast) return ast.lit;
+  if ('field' in ast) return Object.prototype.hasOwnProperty.call(row, ast.field) ? row[ast.field] : null;
+  if ('fn' in ast) return callFn(ast.fn, ast.args.map(a => evalExpr(a, row)), row);
+  const L = () => evalExpr(ast.l, row), R = () => evalExpr(ast.r, row);
+  switch (ast.op) {
+    case '||': return truthy(L()) || truthy(R());
+    case '&&': return truthy(L()) && truthy(R());
+    case '!': return !truthy(R());
+    case 'neg': return -num(R());
+    case '+': { const a = L(), b = R(); return (isNumeric(a) && isNumeric(b)) ? num(a) + num(b) : str(a) + str(b); }
+    case '-': return num(L()) - num(R());
+    case '*': return num(L()) * num(R());
+    case '/': return num(L()) / num(R());
+    case '.': return str(L()) + str(R());
+    case '==': { const a = L(), b = R(); return (isNumeric(a) && isNumeric(b)) ? num(a) === num(b) : str(a).toLowerCase() === str(b).toLowerCase(); }
+    case '!=': { const a = L(), b = R(); return (isNumeric(a) && isNumeric(b)) ? num(a) !== num(b) : str(a).toLowerCase() !== str(b).toLowerCase(); }
+    case '<': return num(L()) < num(R());
+    case '>': return num(L()) > num(R());
+    case '<=': return num(L()) <= num(R());
+    case '>=': return num(L()) >= num(R());
+  }
+  return null;
+}
+const truthy = v => v === true || (typeof v === 'number' && v !== 0) || (typeof v === 'string' && v !== '' && v !== '0' && v.toLowerCase() !== 'false');
+function callFn(name, a, row) {
+  switch (name) {
+    case 'lower': return str(a[0]).toLowerCase();
+    case 'upper': return str(a[0]).toUpperCase();
+    case 'len': return str(a[0]).length;
+    case 'round': return a[1] != null ? Number(num(a[0]).toFixed(num(a[1]))) : Math.round(num(a[0]));
+    case 'abs': return Math.abs(num(a[0]));
+    case 'floor': return Math.floor(num(a[0]));
+    case 'ceil': case 'ceiling': return Math.ceil(num(a[0]));
+    case 'if': return truthy(a[0]) ? a[1] : a[2];
+    case 'coalesce': return a.find(x => x != null && x !== '') ?? null;
+    case 'tostring': return str(a[0]);
+    case 'tonumber': return isNumeric(a[0]) ? num(a[0]) : null;
+    case 'substr': return str(a[0]).substr(num(a[1]) - 1, a[2] != null ? num(a[2]) : undefined);
+    case 'isnull': return a[0] == null || a[0] === '';
+    case 'isnotnull': return !(a[0] == null || a[0] === '');
+    case 'like': return wildcardToRe(str(a[1]).replace(/%/g, '*').replace(/_/g, '?')).test(str(a[0]));
+    case 'match': { try { return new RegExp(str(a[1])).test(str(a[0])); } catch (e) { return false; } }
+    case 'max': return Math.max(...a.map(num));
+    case 'min': return Math.min(...a.map(num));
+    default: return null;
+  }
+}
+
+/* --------------------------- pipeline commands ---------------------------- */
+const AGG = {
+  count: g => g.length,
+  dc: (g, f) => new Set(g.map(r => str(r[f])).filter(x => x !== '')).size,
+  distinct_count: (g, f) => AGG.dc(g, f),
+  sum: (g, f) => g.reduce((s, r) => s + (isNumeric(r[f]) ? num(r[f]) : 0), 0),
+  avg: (g, f) => { const n = g.filter(r => isNumeric(r[f])); return n.length ? Math.round((n.reduce((s, r) => s + num(r[f]), 0) / n.length) * 100) / 100 : 0; },
+  min: (g, f) => Math.min(...g.filter(r => isNumeric(r[f])).map(r => num(r[f]))),
+  max: (g, f) => Math.max(...g.filter(r => isNumeric(r[f])).map(r => num(r[f]))),
+  values: (g, f) => [...new Set(g.map(r => str(r[f])).filter(x => x !== ''))].sort().join(', '),
+  list: (g, f) => g.map(r => str(r[f])).filter(x => x !== '').join(', '),
+  first: (g, f) => g.length ? g[0][f] : null,
+  last: (g, f) => g.length ? g[g.length - 1][f] : null
+};
+function cmd_stats(state, arg) {
+  // arg: "<func[(field)] [as name]> ... [by f1,f2]"  (specs are space- or comma-separated)
+  let by = [];
+  const byM = arg.match(/\bby\b\s+(.+)$/i);
+  if (byM) { by = byM[1].split(/[\s,]+/).map(s => s.trim()).filter(Boolean); arg = arg.slice(0, byM.index); }
+  const tokens = (arg.replace(/,/g, ' ').match(/\w+\s*\([^)]*\)|\bas\b|[\w()]+/gi) || []).map(t => t.trim());
+  const specs = [];
+  for (let i = 0; i < tokens.length;) {
+    const s = tokens[i++]; let name = null;
+    if (tokens[i] && tokens[i].toLowerCase() === 'as' && tokens[i + 1]) { name = tokens[i + 1]; i += 2; }
+    const m = s.match(/^(\w+)\s*(?:\(\s*([^)]*)\s*\))?$/);
+    if (!m) continue;
+    const fn = m[1].toLowerCase(), field = m[2] ? m[2].trim() : null;
+    specs.push({ fn, field, name: name || (field ? fn + '(' + field + ')' : fn) });
+  }
+  const groups = new Map();
+  for (const r of state.rows) { const key = by.map(f => str(r[f])).join('\u0001'); if (!groups.has(key)) groups.set(key, []); groups.get(key).push(r); }
+  const rows = [];
+  for (const [key, g] of groups) {
+    const row = {}; const parts = key.split('\u0001'); by.forEach((f, i) => row[f] = parts[i]);
+    for (const sp of specs) { const fn = AGG[sp.fn]; row[sp.name] = fn ? fn(g, sp.field) : null; }
+    rows.push(row);
+  }
+  return { rows, columns: [...by, ...specs.map(s => s.name)] };
+}
+function cmd_where(state, arg) { const ast = parseExpr(arg); return { rows: state.rows.filter(r => truthy(evalExpr(ast, r))), columns: state.columns }; }
+function cmd_eval(state, arg) {
+  const eq = firstTopLevelEq(arg); if (eq < 0) return state;
+  const name = arg.slice(0, eq).trim(), ast = parseExpr(arg.slice(eq + 1));
+  const rows = state.rows.map(r => ({ ...r, [name]: evalExpr(ast, r) }));
+  const columns = state.columns.includes(name) ? state.columns : [...state.columns, name];
+  return { rows, columns };
+}
+function firstTopLevelEq(s) { for (let i = 0; i < s.length; i++) { const c = s[i]; if (c === '=' && s[i - 1] !== '!' && s[i - 1] !== '<' && s[i - 1] !== '>' && s[i + 1] !== '=') return i; } return -1; }
+function cmd_fields(state, arg, keep) {
+  let remove = false; arg = arg.trim();
+  if (arg[0] === '-') { remove = true; arg = arg.slice(1); } else if (arg[0] === '+') arg = arg.slice(1);
+  const list = arg.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
+  if (remove) return { rows: state.rows, columns: state.columns.filter(c => !list.includes(c)) };
+  return { rows: state.rows, columns: list };
+}
+function cmd_rename(state, arg) {
+  const m = arg.match(/^(\w+)\s+as\s+(\w+)$/i); if (!m) return state;
+  const [, from, to] = m;
+  const rows = state.rows.map(r => { const n = { ...r }; if (from in n) { n[to] = n[from]; delete n[from]; } return n; });
+  return { rows, columns: state.columns.map(c => c === from ? to : c) };
+}
+function cmd_sort(state, arg) {
+  let limit = 0; arg = arg.trim();
+  const lm = arg.match(/^(\d+)\s+(.+)/); if (lm) { limit = Number(lm[1]); arg = lm[2]; }
+  const keys = arg.split(',').map(s => s.trim()).filter(Boolean).map(s => { let dir = 1; if (s[0] === '-') { dir = -1; s = s.slice(1); } else if (s[0] === '+') s = s.slice(1); return { f: s.trim(), dir }; });
+  const rows = state.rows.slice().sort((a, b) => {
+    for (const k of keys) { const av = a[k.f], bv = b[k.f]; let c; if (isNumeric(av) && isNumeric(bv)) c = num(av) - num(bv); else c = str(av).localeCompare(str(bv)); if (c) return c * k.dir; }
+    return 0;
+  });
+  return { rows: limit ? rows.slice(0, limit) : rows, columns: state.columns };
+}
+function cmd_topRare(state, arg, rare) {
+  let n = 10; arg = arg.trim();
+  const nm = arg.match(/^(\d+)\s+(.+)/); if (nm) { n = Number(nm[1]); arg = nm[2]; }
+  let by = []; const byM = arg.match(/\bby\b\s+(.+)$/i); if (byM) { by = byM[1].split(',').map(s => s.trim()); arg = arg.slice(0, byM.index).trim(); }
+  const field = arg.trim();
+  const groups = new Map();
+  for (const r of state.rows) { const key = [str(r[field]), ...by.map(f => str(r[f]))].join('\u0001'); groups.set(key, (groups.get(key) || 0) + 1); }
+  const total = state.rows.length || 1;
+  let rows = [...groups].map(([key, count]) => { const parts = key.split('\u0001'); const row = { [field]: parts[0] }; by.forEach((f, i) => row[f] = parts[i + 1]); row.count = count; row.percent = Math.round((count / total) * 1000) / 10; return row; });
+  rows.sort((a, b) => rare ? a.count - b.count : b.count - a.count);
+  return { rows: rows.slice(0, n), columns: [field, ...by, 'count', 'percent'] };
+}
+function cmd_dedup(state, arg) {
+  const fields = arg.split(/[\s,]+/).map(s => s.trim()).filter(Boolean); const seen = new Set(); const rows = [];
+  for (const r of state.rows) { const key = fields.map(f => str(r[f])).join('\u0001'); if (!seen.has(key)) { seen.add(key); rows.push(r); } }
+  return { rows, columns: state.columns };
+}
+
+const COMMANDS = {
+  stats: cmd_stats, where: cmd_where, eval: cmd_eval,
+  table: (s, a) => cmd_fields(s, a, true), fields: (s, a) => cmd_fields(s, a, false),
+  rename: cmd_rename, sort: cmd_sort,
+  head: (s, a) => ({ rows: s.rows.slice(0, Number(a.trim()) || 10), columns: s.columns }),
+  tail: (s, a) => ({ rows: s.rows.slice(-(Number(a.trim()) || 10)), columns: s.columns }),
+  top: (s, a) => cmd_topRare(s, a, false), rare: (s, a) => cmd_topRare(s, a, true),
+  dedup: cmd_dedup
+};
+
+const DEFAULT_COLUMNS = ['_time', 'index', 'host', 'user', 'src_ip', 'dest_ip', 'action', 'signature'];
+
+// Run an SPL query over an array of event objects. Returns { ok, rows, columns,
+// type: 'events'|'table', error? }. The first stage is an implicit `search`.
+function runSpl(events, query) {
+  try {
+    const stages = splitTopLevel(String(query || ''), '|').map(s => s.trim());
+    while (stages.length && stages[stages.length - 1] === '') stages.pop();   // tolerate a trailing pipe
+    if (!stages.length) return { ok: true, rows: events.slice(), columns: DEFAULT_COLUMNS, type: 'events' };
+    let first = stages[0];                                                    // may be '' when the query starts with '|'
+    if (/^search\s/i.test(first)) first = first.replace(/^search\s/i, '').trim();
+    const pred = first ? parseSearch(first) : () => true;
+    let state = { rows: events.filter(pred), columns: DEFAULT_COLUMNS, type: 'events' };
+    for (let k = 1; k < stages.length; k++) {
+      const st = stages[k]; if (!st) continue; const sp = st.indexOf(' ');
+      const name = (sp < 0 ? st : st.slice(0, sp)).toLowerCase();
+      const arg = sp < 0 ? '' : st.slice(sp + 1).trim();
+      const fn = COMMANDS[name];
+      if (!fn) return { ok: false, error: 'Unknown command: ' + name, rows: [], columns: [] };
+      const next = fn(state, arg);
+      state = { rows: next.rows, columns: next.columns, type: ['stats', 'top', 'rare', 'table', 'rename'].includes(name) ? 'table' : (name === 'fields' ? 'table' : state.type) };
+    }
+    return { ok: true, rows: state.rows, columns: state.columns, type: state.type };
+  } catch (e) {
+    return { ok: false, error: e.message, rows: [], columns: [] };
+  }
+}
+
+module.exports = { runSpl, parseSearch, parseExpr, evalExpr, DEFAULT_COLUMNS };
+
+});
 __def("./ui", function(module, exports, require){
 // BlueShift — application UI (vanilla JS, no framework). The platform shell plus
 // the SIEM analyst console. State lives in memory and the view is re-rendered on
 // change; everything is driven by the deterministic model, so the UI stays a thin
 // presentation layer over tested logic.
 const Model = require('./model');
+const Spl = require('./spl');
 
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -485,15 +904,37 @@ const DISPOSITIONS = [
 ];
 const VERDICT_LABEL = { 'true-positive': 'a true positive', 'false-positive': 'a false positive', 'benign': 'benign / expected activity' };
 
-const STATE = { env: null, seed: 1, selected: null, filters: { severity: 'all', status: 'open', query: '' }, feedback: null };
+const DEFAULT_SPL = 'index=auth action=failure | stats count dc(host) as hosts by user | sort -count';
+const EXAMPLES = [
+  'index=auth action=failure | stats count by user host | where count > 3 | sort -count',
+  'signature=c2_beacon OR signature=large_outbound_transfer | table time host dest_ip bytes signature',
+  'index=auth | top 5 user',
+  'index=dlp | eval mb = round(bytes/1048576, 1) | sort -mb | table time host mb dest_ip',
+  'index=network | stats count by action signature | sort -count',
+  'alert_id=* | stats values(signature) as detections count by host'
+];
+const CHEAT = [
+  ['search', 'index=auth action=failure host=FS-* bytes>1000', 'field=value, !=, <,>,<=,>=, wildcards (*), AND / OR / NOT, "quoted phrases", bare terms match the raw event.'],
+  ['stats', 'stats count dc(user) as users sum(bytes) avg(bytes) by index', 'Aggregate. Funcs: count, dc, sum, avg, min, max, values, list, first, last. Group with by.'],
+  ['where', 'where count > 10 AND like(host,"FS-%")', 'Filter on fields/aggregates. Funcs: isnull, isnotnull, like, match, len, round, if, coalesce.'],
+  ['eval', 'eval mb = round(bytes/1048576, 1)', 'Compute a new field. Arithmetic + - * /, concat with ., and the where-functions.'],
+  ['table / fields', 'table time host user action  ·  fields - _raw', 'Choose columns to show (table) or add/remove them (fields + / -).'],
+  ['sort', 'sort 10 -count, host', 'Sort; -field descending, +field ascending, leading number limits rows.'],
+  ['top / rare', 'top 10 user by host', 'Most / least common values with count and percent.'],
+  ['head / tail / rename / dedup', 'dedup user | head 20 | rename host as asset', 'Trim rows, uniq by field(s), rename a field.']
+];
+
+const STATE = { env: null, seed: 1, view: 'triage', selected: null, filters: { severity: 'all', status: 'open', query: '' }, feedback: null, search: { query: DEFAULT_SPL, result: null, ran: false }, cheat: false };
 
 function newShift(seed) {
   STATE.seed = seed == null ? (Date.now() % 100000) : seed;
   STATE.env = Model.generateEnvironment(STATE.seed);
   STATE.selected = STATE.env.alerts[0] ? STATE.env.alerts[0].id : null;
   STATE.feedback = null;
+  STATE.search.result = null; STATE.search.ran = false;
   render();
 }
+function runSearch() { STATE.search.result = Spl.runSpl(STATE.env.events, STATE.search.query); STATE.search.ran = true; render(); }
 
 const MODULES = [
   { key: 'siem', glyph: '◈', name: 'SIEM', sub: 'Alert triage', active: true },
@@ -517,32 +958,71 @@ function render() {
       </aside>
       <main class="bs-main">
         <header class="bs-top">
-          <div><div class="bs-eyebrow">Security operations · SIEM</div><h1>Alert triage console</h1></div>
+          <div><div class="bs-eyebrow">Security operations · SIEM</div><h1>${STATE.view === 'search' ? 'Search' : 'Alert triage console'}</h1></div>
           <div class="bs-top-actions">
             <div class="bs-score" title="Your triage accuracy this shift"><span>Accuracy</span><strong>${s.accuracy == null ? '—' : s.accuracy + '%'}</strong><small>${s.correct}/${s.closed} graded</small></div>
             <button class="bs-btn" id="bsNewShift">↻ New shift</button>
           </div>
         </header>
-        <section class="bs-kpis">
-          <article class="bs-kpi"><span>Open alerts</span><strong>${s.open}</strong><em>${s.total} this shift</em></article>
-          <article class="bs-kpi k-critical"><span>Critical</span><strong>${s.bySev.critical}</strong></article>
-          <article class="bs-kpi k-high"><span>High</span><strong>${s.bySev.high}</strong></article>
-          <article class="bs-kpi k-medium"><span>Medium</span><strong>${s.bySev.medium}</strong></article>
-          <article class="bs-kpi"><span>Closed</span><strong>${s.closed}</strong><em>${s.accuracy == null ? 'triage to score' : s.accuracy + '% correct'}</em></article>
-        </section>
-        <div class="bs-toolbar">
-          <label>Severity <select id="bsSev">${['all', ...SEV_ORDER].map(v => `<option value="${v}"${STATE.filters.severity === v ? ' selected' : ''}>${v === 'all' ? 'All' : v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></label>
-          <label>Status <select id="bsStatus">${['open', 'all', 'new', 'investigating', 'closed'].map(v => `<option value="${v}"${STATE.filters.status === v ? ' selected' : ''}>${v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></label>
-          <input id="bsSearch" type="search" value="${esc(STATE.filters.query)}" placeholder="Search alerts, assets, log lines, techniques…"/>
-          <span class="bs-count">${shown.length} shown</span>
-        </div>
-        <div class="bs-split">
-          <section class="bs-queue" aria-label="Alert queue">${shown.map(a => queueRow(a, sel)).join('') || '<div class="bs-empty">No alerts match the current filters.</div>'}</section>
-          <section class="bs-detail" aria-label="Alert detail">${sel ? detail(sel) : '<div class="bs-empty">Select an alert to investigate.</div>'}</section>
-        </div>
+        <nav class="bs-subtabs">
+          <button class="bs-subtab${STATE.view === 'triage' ? ' active' : ''}" data-view="triage">◈ Alert triage</button>
+          <button class="bs-subtab${STATE.view === 'search' ? ' active' : ''}" data-view="search">⌕ Search · SPL</button>
+        </nav>
+        ${STATE.view === 'search' ? searchBody() : triageBody(s, shown, sel)}
       </main>
     </div>`;
   wire();
+}
+
+function triageBody(s, shown, sel) {
+  return `
+    <section class="bs-kpis">
+      <article class="bs-kpi"><span>Open alerts</span><strong>${s.open}</strong><em>${s.total} this shift</em></article>
+      <article class="bs-kpi k-critical"><span>Critical</span><strong>${s.bySev.critical}</strong></article>
+      <article class="bs-kpi k-high"><span>High</span><strong>${s.bySev.high}</strong></article>
+      <article class="bs-kpi k-medium"><span>Medium</span><strong>${s.bySev.medium}</strong></article>
+      <article class="bs-kpi"><span>Closed</span><strong>${s.closed}</strong><em>${s.accuracy == null ? 'triage to score' : s.accuracy + '% correct'}</em></article>
+    </section>
+    <div class="bs-toolbar">
+      <label>Severity <select id="bsSev">${['all', ...SEV_ORDER].map(v => `<option value="${v}"${STATE.filters.severity === v ? ' selected' : ''}>${v === 'all' ? 'All' : v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></label>
+      <label>Status <select id="bsStatus">${['open', 'all', 'new', 'investigating', 'closed'].map(v => `<option value="${v}"${STATE.filters.status === v ? ' selected' : ''}>${v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></label>
+      <input id="bsSearch" type="search" value="${esc(STATE.filters.query)}" placeholder="Search alerts, assets, log lines, techniques…"/>
+      <span class="bs-count">${shown.length} shown</span>
+    </div>
+    <div class="bs-split">
+      <section class="bs-queue" aria-label="Alert queue">${shown.map(a => queueRow(a, sel)).join('') || '<div class="bs-empty">No alerts match the current filters.</div>'}</section>
+      <section class="bs-detail" aria-label="Alert detail">${sel ? detail(sel) : '<div class="bs-empty">Select an alert to investigate.</div>'}</section>
+    </div>`;
+}
+
+function searchBody() {
+  const r = STATE.search.result, n = STATE.env.events.length;
+  return `
+    <div class="bs-spl">
+      <div class="bs-spl-bar">
+        <span class="bs-spl-prompt">SPL</span>
+        <textarea id="bsSpl" rows="2" spellcheck="false" placeholder="index=auth action=failure | stats count by user | sort -count">${esc(STATE.search.query)}</textarea>
+        <button class="bs-btn primary" id="bsSplRun" title="Run (Ctrl/⌘+Enter)">▸ Search</button>
+      </div>
+      <div class="bs-spl-meta">
+        <span>${n} events indexed this shift</span>
+        <button class="bs-link" id="bsCheatToggle">${STATE.cheat ? 'Hide' : 'Show'} SPL reference</button>
+      </div>
+      <div class="bs-examples">${EXAMPLES.map(q => `<button class="bs-ex" data-ex="${esc(q)}">${esc(q.length > 58 ? q.slice(0, 56) + '…' : q)}</button>`).join('')}</div>
+      ${STATE.cheat ? `<div class="bs-cheat">${CHEAT.map(([cmd, ex, desc]) => `<div class="bs-cheat-row"><code>${esc(cmd)}</code><div><b>${esc(ex)}</b><small>${esc(desc)}</small></div></div>`).join('')}</div>` : ''}
+      <div class="bs-results">${resultView(r)}</div>
+    </div>`;
+}
+
+function resultView(r) {
+  if (!r) return '<div class="bs-empty">Run a search to see events and statistics from this shift’s index.</div>';
+  if (!r.ok) return `<div class="bs-spl-error">✗ ${esc(r.error)}</div>`;
+  if (!r.rows.length) return '<div class="bs-empty">No results. Broaden the search or check field names.</div>';
+  const cols = r.columns.filter(c => r.rows.some(row => row[c] !== undefined));
+  const head = cols.map(c => `<th>${esc(c)}</th>`).join('');
+  const body = r.rows.slice(0, 200).map(row => `<tr>${cols.map(c => `<td${/^(count|percent|bytes|total|mean)$/.test(c) || typeof row[c] === 'number' ? ' class="num"' : ''}>${esc(row[c] == null ? '' : row[c])}</td>`).join('')}</tr>`).join('');
+  return `<div class="bs-result-head"><span class="bs-badge ${r.type === 'events' ? 'ev' : 'tbl'}">${r.type === 'events' ? 'events' : 'statistics'}</span><span>${r.rows.length} result${r.rows.length === 1 ? '' : 's'}${r.rows.length > 200 ? ' (showing 200)' : ''}</span></div>
+    <div class="bs-table-wrap"><table class="bs-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
 function queueRow(a, sel) {
@@ -583,6 +1063,8 @@ function detail(a) {
 
 function wire() {
   $('#bsNewShift').addEventListener('click', () => newShift());
+  document.querySelectorAll('.bs-subtab').forEach(b => b.addEventListener('click', () => { STATE.view = b.dataset.view; render(); }));
+  if (STATE.view === 'search') { wireSearch(); return; }
   $('#bsSev').addEventListener('change', e => { STATE.filters.severity = e.target.value; render(); });
   $('#bsStatus').addEventListener('change', e => { STATE.filters.status = e.target.value; render(); });
   const search = $('#bsSearch');
@@ -598,6 +1080,15 @@ function wire() {
     if (r.ok) STATE.feedback = { id: b.dataset.alert, correct: r.correct, truth: r.truth, verdict: b.dataset.dispo };
     render();
   }));
+}
+
+function wireSearch() {
+  const ta = $('#bsSpl');
+  ta.addEventListener('input', e => { STATE.search.query = e.target.value; });
+  ta.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runSearch(); } });
+  $('#bsSplRun').addEventListener('click', () => { STATE.search.query = ta.value; runSearch(); });
+  $('#bsCheatToggle').addEventListener('click', () => { STATE.cheat = !STATE.cheat; render(); });
+  document.querySelectorAll('[data-ex]').forEach(b => b.addEventListener('click', () => { STATE.search.query = b.dataset.ex; runSearch(); }));
 }
 
 function boot() { newShift(1); }

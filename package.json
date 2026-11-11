@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "build": "node build.js",
-    "test": "node test/model.test.js",
+    "test": "node test/model.test.js && node test/spl.test.js",
     "test:ui": "node build.js && node test/ui.test.js",
     "test:ui:firefox": "PLAYWRIGHT_BROWSER=firefox node test/ui.test.js",
     "test:ui:webkit": "PLAYWRIGHT_BROWSER=webkit node test/ui.test.js",

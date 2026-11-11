@@ -77,11 +77,69 @@ function buildAlerts(rng, assets, n) {
   return alerts.sort((a, b) => C.SEV_RANK[b.severity] - C.SEV_RANK[a.severity] || a.minutesAgo - b.minutesAgo);
 }
 
+// How each detection archetype projects onto structured index events.
+const EV_MAP = {
+  'ssh-brute-force': { index: 'auth', sourcetype: 'linux_secure', dest_port: 22, signature: 'ssh_auth_failure', action: 'failure' },
+  'rdp-brute-force': { index: 'auth', sourcetype: 'wineventlog:security', dest_port: 3389, signature: 'win_logon_failure', action: 'failure' },
+  'port-scan': { index: 'network', sourcetype: 'pan:traffic', dest_port: 0, signature: 'port_scan', action: 'blocked' },
+  'c2-beacon': { index: 'network', sourcetype: 'proxy', dest_port: 443, signature: 'c2_beacon', action: 'allowed' },
+  'phishing-click': { index: 'proxy', sourcetype: 'proxy', dest_port: 443, signature: 'phishing_url_click', action: 'allowed' },
+  'suspicious-powershell': { index: 'endpoint', sourcetype: 'edr:process', dest_port: 0, signature: 'encoded_powershell', action: 'allowed' },
+  'priv-esc': { index: 'auth', sourcetype: 'wineventlog:security', dest_port: 0, signature: 'privilege_assigned', action: 'success' },
+  'data-exfil': { index: 'dlp', sourcetype: 'dlp:transfer', dest_port: 443, signature: 'large_outbound_transfer', action: 'allowed' },
+  'impossible-travel': { index: 'identity', sourcetype: 'idp:signin', dest_port: 443, signature: 'impossible_travel', action: 'success' },
+  'mfa-fatigue': { index: 'identity', sourcetype: 'idp:mfa', dest_port: 443, signature: 'mfa_push_flood', action: 'denied' },
+  'av-detection': { index: 'endpoint', sourcetype: 'av:detection', dest_port: 0, signature: 'malware_detected', action: 'blocked' },
+  'new-admin-account': { index: 'auth', sourcetype: 'wineventlog:security', dest_port: 0, signature: 'account_created', action: 'success' }
+};
+const NOISE = [
+  { index: 'auth', sourcetype: 'linux_secure', signature: 'ssh_auth_success', action: 'success', port: 22 },
+  { index: 'auth', sourcetype: 'wineventlog:security', signature: 'win_logon_success', action: 'success', port: 0 },
+  { index: 'network', sourcetype: 'pan:traffic', signature: 'traffic_allow', action: 'allowed', port: 443 },
+  { index: 'network', sourcetype: 'pan:traffic', signature: 'traffic_allow', action: 'allowed', port: 80 },
+  { index: 'network', sourcetype: 'dns', signature: 'dns_query', action: 'allowed', port: 53 },
+  { index: 'proxy', sourcetype: 'proxy', signature: 'web_browse', action: 'allowed', port: 443 },
+  { index: 'identity', sourcetype: 'idp:signin', signature: 'signin_success', action: 'success', port: 443 },
+  { index: 'endpoint', sourcetype: 'edr:process', signature: 'process_start', action: 'allowed', port: 0 }
+];
+const clock = minsAgo => { const t = (1440 + (615 - minsAgo)) % 1440; return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); };
+
+function buildEvents(rng, assets, alerts) {
+  const events = [];
+  const push = e => events.push({ ...e, _time: e._time, time: clock(e._time) });
+  // Alert-linked events: the raw lines, structured and field-extracted.
+  for (const a of alerts) {
+    const m = EV_MAP[a.archetype] || { index: 'misc', sourcetype: 'misc', dest_port: 0, signature: a.archetype, action: 'allowed' };
+    a.events.forEach((raw, i) => push({
+      _time: a.minutesAgo + i, _raw: raw, index: m.index, sourcetype: m.sourcetype,
+      host: a.asset.hostname, source: m.sourcetype, user: a.user,
+      src_ip: (raw.match(/\b(\d{1,3}(?:\.\d{1,3}){3})\b/) || [])[1] || a.asset.ip,
+      dest_ip: a.asset.ip, dest_port: m.dest_port, action: m.action,
+      signature: m.signature, bytes: a.archetype === 'data-exfil' ? rng.int(200000, 5000000) : rng.int(120, 90000),
+      severity: a.severity, alert_id: a.id, technique: a.techniqueId
+    }));
+  }
+  // Background noise so stats / top / searches return realistic distributions.
+  const noiseN = 180 + rng.int(0, 90);
+  for (let i = 0; i < noiseN; i++) {
+    const n = rng.pick(NOISE), asset = rng.pick(assets), user = `${rng.pick(C.FIRST)}.${rng.pick(C.LAST)}`;
+    const mins = rng.int(1, 720);
+    push({
+      _time: mins, index: n.index, sourcetype: n.sourcetype, host: asset.hostname, source: n.sourcetype, user,
+      src_ip: `10.${rng.int(0, 7)}.${rng.int(1, 8)}.${rng.int(10, 240)}`, dest_ip: asset.ip, dest_port: n.port,
+      action: n.action, signature: n.signature, bytes: rng.int(80, 120000), severity: 'info', alert_id: null, technique: null,
+      _raw: `${n.sourcetype}: ${n.signature} user=${user} host=${asset.hostname} action=${n.action}`
+    });
+  }
+  return events.sort((a, b) => a._time - b._time);
+}
+
 function generateEnvironment(seed = 1, opts = {}) {
   const rng = makeRng(seed);
   const assets = buildAssets(rng, opts.assets || 26);
   const alerts = buildAlerts(rng, assets, opts.alerts || 16);
-  return { seed, assets, alerts, meta: { version: 1 } };
+  const events = buildEvents(rng, assets, alerts);
+  return { seed, assets, alerts, events, meta: { version: 1 } };
 }
 
 // ---- queries ----

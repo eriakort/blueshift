@@ -20,7 +20,7 @@ jobs:
         run: git diff --exit-code dist/index.html
 
       - name: Model unit tests
-        run: node test/model.test.js
+        run: node test/model.test.js && node test/spl.test.js
 
       - name: Install Playwright browsers
         run: |
