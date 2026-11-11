@@ -1,0 +1,35 @@
+name: CI
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build dist/index.html from source
+        run: node build.js
+
+      - name: No drift — dist must match a clean build of src
+        run: git diff --exit-code dist/index.html
+
+      - name: Model unit tests
+        run: node test/model.test.js
+
+      - name: Install Playwright browsers
+        run: |
+          npm install --no-save playwright@1.48.0
+          npx playwright install --with-deps chromium firefox webkit
+
+      - name: UI test (chromium)
+        run: node test/ui.test.js
+      - name: UI test (firefox)
+        run: PLAYWRIGHT_BROWSER=firefox node test/ui.test.js
+      - name: UI test (webkit)
+        run: PLAYWRIGHT_BROWSER=webkit node test/ui.test.js

@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>BlueShift — SOC Analyst Range</title>
+<meta name="description" content="BlueShift: a fully simulated SOC analyst training range. Triage SIEM alerts, map them to MITRE ATT&CK, and grade your dispositions against ground truth. Offline, deterministic, no backend."/>
+<style>:root {
+  --bg: #0b1220; --panel: #121c2e; --panel-2: #0f1828; --raise: #18273d; --line: #233551;
+  --ink: #e8eef7; --muted: #8aa0bd; --accent: #4aa8ff; --accent-2: #38e0c0; --good: #44d492; --warn: #e5c15c;
+  --critical: #ff5a6a; --high: #ff9d5c; --medium: #e5c15c; --low: #7fb0ff;
+  --radius: 12px; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+#app, .bs-shell { height: 100%; }
+.bs-shell { display: grid; grid-template-columns: 236px 1fr; }
+
+/* rail */
+.bs-rail { background: linear-gradient(180deg, var(--panel), var(--panel-2)); border-right: 1px solid var(--line); padding: 16px 12px; display: flex; flex-direction: column; gap: 6px; overflow: auto; }
+.bs-brand { display: flex; gap: 10px; align-items: center; padding: 4px 6px 14px; }
+.bs-logo { font-size: 20px; color: var(--accent); letter-spacing: -2px; }
+.bs-brand strong { display: block; font-size: 16px; letter-spacing: .3px; }
+.bs-brand small { color: var(--muted); font-size: 11px; }
+.bs-rail-label { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 8px 6px 4px; }
+.bs-mod { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: transparent; border: 1px solid transparent; color: var(--ink); border-radius: 10px; padding: 9px 10px; cursor: pointer; }
+.bs-mod:hover:not(:disabled) { background: var(--raise); }
+.bs-mod.active { background: var(--raise); border-color: color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: inset 2px 0 var(--accent); }
+.bs-mod.soon { opacity: .5; cursor: default; }
+.bs-mod-glyph { font-size: 15px; color: var(--accent); width: 20px; text-align: center; }
+.bs-mod-text b { display: block; font-size: 13px; }
+.bs-mod-text small { color: var(--muted); font-size: 11px; }
+.bs-soon { margin-left: auto; font-size: 9px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); border: 1px solid var(--line); border-radius: 10px; padding: 2px 6px; }
+.bs-rail-foot { margin-top: auto; color: var(--muted); font-size: 11px; padding: 10px 6px; border-top: 1px solid var(--line); }
+
+/* main */
+.bs-main { overflow: auto; padding: 22px 26px; }
+.bs-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.bs-eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.bs-top h1 { font-size: 24px; margin: 3px 0 0; }
+.bs-top-actions { display: flex; gap: 12px; align-items: center; }
+.bs-score { border: 1px solid var(--line); border-radius: 10px; padding: 7px 14px; text-align: center; background: var(--panel); }
+.bs-score span { display: block; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.bs-score strong { font-size: 20px; color: var(--accent-2); }
+.bs-score small { display: block; color: var(--muted); font-size: 11px; }
+.bs-btn { background: var(--raise); color: var(--ink); border: 1px solid var(--line); border-radius: 9px; padding: 8px 13px; cursor: pointer; font-size: 13px; }
+.bs-btn:hover { border-color: var(--accent); }
+.bs-btn.ghost { background: transparent; }
+.bs-link { background: none; border: none; color: var(--accent); cursor: pointer; padding: 0; font-size: 13px; }
+
+.bs-kpis { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1.4fr; gap: 10px; margin: 16px 0; }
+.bs-kpi { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 12px 15px; }
+.bs-kpi span { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.bs-kpi strong { display: block; font-size: 26px; line-height: 1.1; }
+.bs-kpi em { font-size: 11px; color: var(--muted); font-style: normal; }
+.bs-kpi.k-critical strong { color: var(--critical); } .bs-kpi.k-high strong { color: var(--high); } .bs-kpi.k-medium strong { color: var(--medium); }
+
+.bs-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.bs-toolbar label { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.bs-toolbar select, .bs-toolbar input { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+.bs-toolbar input { flex: 1; min-width: 200px; }
+.bs-count { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+.bs-split { display: grid; grid-template-columns: minmax(320px, 1.1fr) 1.5fr; gap: 14px; align-items: start; }
+.bs-queue { display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 290px); overflow: auto; }
+.bs-row { display: flex; gap: 11px; align-items: center; text-align: left; width: 100%; background: var(--panel); border: 1px solid var(--line); border-left-width: 3px; border-radius: 10px; padding: 11px 12px; cursor: pointer; color: var(--ink); }
+.bs-row:hover { background: var(--raise); }
+.bs-row.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.bs-row.closed { opacity: .6; }
+.bs-row.sev-critical { border-left-color: var(--critical); } .bs-row.sev-high { border-left-color: var(--high); } .bs-row.sev-medium { border-left-color: var(--medium); } .bs-row.sev-low { border-left-color: var(--low); }
+.bs-sev { flex: none; width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; font-weight: 700; font-size: 11px; color: #0b1220; }
+.bs-sev.sev-critical { background: var(--critical); } .bs-sev.sev-high { background: var(--high); } .bs-sev.sev-medium { background: var(--medium); } .bs-sev.sev-low { background: var(--low); }
+.bs-row-main { flex: 1; min-width: 0; }
+.bs-row-main b { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bs-row-main small { color: var(--muted); font-size: 11px; }
+.bs-row-state { flex: none; font-size: 13px; }
+.bs-row-state.ok { color: var(--good); } .bs-row-state.bad { color: var(--critical); } .bs-row-state.wip { color: var(--accent); }
+
+.bs-detail { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); padding: 16px 18px; min-height: 200px; }
+.bs-detail-head { display: flex; gap: 12px; align-items: flex-start; }
+.bs-sev-badge { font-size: 10px; font-weight: 700; letter-spacing: .05em; padding: 4px 9px; border-radius: 6px; color: #0b1220; white-space: nowrap; }
+.bs-sev-badge.sev-critical { background: var(--critical); } .bs-sev-badge.sev-high { background: var(--high); } .bs-sev-badge.sev-medium { background: var(--medium); } .bs-sev-badge.sev-low { background: var(--low); }
+.bs-detail-head h2 { font-size: 17px; margin: 0 0 6px; }
+.bs-detail-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.bs-chip { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; border: 1px solid var(--line); border-radius: 12px; padding: 2px 9px; }
+.bs-chip.ghost { color: var(--muted); }
+.bs-mono { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.bs-asset-card { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0; padding: 12px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; }
+.bs-asset-card span { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.bs-asset-card b { font-size: 13px; }
+.crit-critical { color: var(--critical); } .crit-high { color: var(--high); } .crit-medium { color: var(--medium); } .crit-low { color: var(--low); }
+.bs-section-label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 7px; }
+.bs-log { background: #070d18; border: 1px solid var(--line); border-radius: 9px; padding: 11px 13px; font-family: var(--mono); font-size: 12px; color: #bcd3f0; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; max-height: 220px; overflow: auto; }
+.bs-reco { margin: 14px 0; padding: 11px 13px; background: var(--raise); border-left: 3px solid var(--accent); border-radius: 0 9px 9px 0; }
+.bs-reco b { font-size: 12px; } .bs-reco p { margin: 5px 0 0; font-size: 13px; color: var(--ink); }
+.bs-feedback { margin: 14px 0; padding: 11px 13px; border-radius: 9px; font-size: 13px; }
+.bs-feedback.good { background: color-mix(in srgb, var(--good) 15%, transparent); border: 1px solid color-mix(in srgb, var(--good) 45%, transparent); }
+.bs-feedback.bad { background: color-mix(in srgb, var(--critical) 13%, transparent); border: 1px solid color-mix(in srgb, var(--critical) 40%, transparent); }
+.bs-dispo { display: flex; gap: 8px; flex-wrap: wrap; }
+.bs-btn.dispo { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.bs-inv { color: var(--accent); font-size: 13px; align-self: center; }
+.bs-closed-note { font-size: 13px; color: var(--muted); }
+.bs-empty { border: 1px dashed var(--line); border-radius: 10px; padding: 26px; text-align: center; color: var(--muted); }
+
+@media (max-width: 1000px) { .bs-shell { grid-template-columns: 1fr; } .bs-rail { flex-direction: row; overflow-x: auto; align-items: center; } .bs-rail-label, .bs-rail-foot { display: none; } .bs-split { grid-template-columns: 1fr; } .bs-kpis { grid-template-columns: 1fr 1fr; } .bs-asset-card { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body><div id="app"></div><script>
+var __mods = {};
+function __def(id, fn){ var m = { exports: {} }; fn(m, m.exports, require); __mods[id] = m; }
+function require(id){ if(!__mods[id]) throw new Error('module not found: '+id); return __mods[id].exports; }
+__def("./rng", function(module, exports, require){
+// BlueShift — deterministic seeded PRNG.
+// Everything in the synthetic SOC environment is generated from a seed so the
+// world is fully reproducible (same seed -> same alerts), which keeps scenarios
+// fair and the test suite stable. No Math.random anywhere in the model.
+
+// mulberry32: a tiny, fast, well-distributed 32-bit PRNG.
+function makeRng(seed) {
+  let a = (seed >>> 0) || 1;
+  const next = () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const api = {
+    float: next,
+    int: (lo, hi) => lo + Math.floor(next() * (hi - lo + 1)),      // inclusive
+    chance: p => next() < p,
+    pick: arr => arr[Math.floor(next() * arr.length)],
+    weighted: pairs => {                                           // [[value, weight], ...]
+      const total = pairs.reduce((s, [, w]) => s + w, 0);
+      let r = next() * total;
+      for (const [v, w] of pairs) { if ((r -= w) < 0) return v; }
+      return pairs[pairs.length - 1][0];
+    },
+    shuffle: arr => { const a2 = arr.slice(); for (let i = a2.length - 1; i > 0; i--) { const j = Math.floor(next() * (i + 1)); [a2[i], a2[j]] = [a2[j], a2[i]]; } return a2; },
+    sample: (arr, n) => api.shuffle(arr).slice(0, n)
+  };
+  return api;
+}
+
+module.exports = { makeRng };
+
+});
+__def("./catalog", function(module, exports, require){
+// BlueShift — static catalog: the building blocks the generator draws from.
+// Fully simulated. MITRE ATT&CK tactic/technique labels are used as plain
+// taxonomy for realism; no live feeds. Each detection ARCHETYPE carries a
+// ground-truth verdict distribution (real SOCs are mostly noise) so a learner's
+// triage can be scored against what the alert "really" was.
+
+const FIRST = ['ava', 'liam', 'noah', 'mia', 'eli', 'zoe', 'omar', 'ines', 'raj', 'nina', 'theo', 'sara', 'kofi', 'lena', 'jun', 'amir', 'cora', 'dev', 'ida', 'yuki'];
+const LAST = ['patel', 'nguyen', 'okafor', 'santos', 'khan', 'rossi', 'mwangi', 'cohen', 'garcia', 'owusu', 'haddad', 'novak', 'silva', 'adeyemi', 'brandt', 'costa'];
+const DEPTS = ['Finance', 'Engineering', 'Sales', 'HR', 'IT Operations', 'Legal', 'Marketing', 'Executive'];
+
+// Asset roles and their typical OS + base criticality.
+const ROLES = [
+  { role: 'workstation', os: ['Windows 11', 'macOS 14', 'Windows 10'], crit: 'low', weight: 10 },
+  { role: 'laptop', os: ['Windows 11', 'macOS 14'], crit: 'low', weight: 8 },
+  { role: 'file-server', os: ['Windows Server 2022', 'Ubuntu 22.04'], crit: 'high', weight: 3 },
+  { role: 'web-server', os: ['Ubuntu 22.04', 'RHEL 9'], crit: 'high', weight: 3 },
+  { role: 'domain-controller', os: ['Windows Server 2022'], crit: 'critical', weight: 1 },
+  { role: 'database', os: ['RHEL 9', 'Ubuntu 22.04'], crit: 'critical', weight: 2 },
+  { role: 'firewall', os: ['PAN-OS 11', 'FortiOS 7'], crit: 'high', weight: 1 },
+  { role: 'vpn-gateway', os: ['PAN-OS 11'], crit: 'high', weight: 1 }
+];
+
+const SEVERITIES = ['critical', 'high', 'medium', 'low'];
+const SEV_RANK = { critical: 4, high: 3, medium: 2, low: 1 };
+const VERDICTS = ['true-positive', 'false-positive', 'benign'];
+
+// The detection archetypes. ev() returns raw log lines (newest last). The hidden
+// `verdicts` weighting is the ground truth a learner's disposition is graded on.
+const ARCHETYPES = [
+  {
+    key: 'ssh-brute-force', severity: 'high', category: 'Credential Access',
+    tactic: 'Credential Access', techniqueId: 'T1110', technique: 'Brute Force',
+    rule: 'Auth · repeated SSH failures from single source',
+    title: c => `SSH brute-force against ${c.asset.hostname} from ${c.srcIp}`,
+    verdicts: [['true-positive', 6], ['false-positive', 3], ['benign', 1]],
+    ev: c => [
+      ...Array.from({ length: 5 }, (_, i) => `sshd[${1200 + i}]: Failed password for ${c.user} from ${c.srcIp} port ${40000 + i * 7} ssh2`),
+      `sshd: ${c.failCount} failed login attempts for ${c.user} from ${c.srcIp} in 90s`,
+      c.truth === 'true-positive' ? `sshd: Accepted password for ${c.user} from ${c.srcIp}  <-- successful login after failures` : `sshd: connection closed by ${c.srcIp} [preauth]`
+    ],
+    reco: c => `Confirm whether the source ${c.srcIp} is expected. If not, block it at the firewall, force a password reset for ${c.user}, and check for a successful login after the failures.`
+  },
+  {
+    key: 'rdp-brute-force', severity: 'high', category: 'Credential Access',
+    tactic: 'Credential Access', techniqueId: 'T1110.001', technique: 'Password Guessing',
+    rule: 'Auth · RDP account lockout threshold exceeded',
+    title: c => `Repeated RDP logon failures on ${c.asset.hostname}`,
+    verdicts: [['true-positive', 5], ['false-positive', 4], ['benign', 1]],
+    ev: c => [
+      `Security 4625: An account failed to log on. Account: ${c.user}. Source: ${c.srcIp}. Type: 10 (RemoteInteractive)`,
+      `Security 4625: ${c.failCount} failures in 2 minutes for ${c.user}`,
+      c.truth === 'false-positive' ? `Service account ${c.user} mapped to a scheduled task with a stale password` : `Security 4740: User account ${c.user} was locked out`
+    ],
+    reco: c => `Check if ${c.user} is a service/automation account with a stale credential (common false positive). Otherwise treat as targeted guessing: isolate the source and review lateral movement.`
+  },
+  {
+    key: 'port-scan', severity: 'medium', category: 'Discovery',
+    tactic: 'Discovery', techniqueId: 'T1046', technique: 'Network Service Discovery',
+    rule: 'Network · horizontal port scan detected',
+    title: c => `Port scan from ${c.srcIp} across the ${c.subnet} subnet`,
+    verdicts: [['true-positive', 3], ['false-positive', 5], ['benign', 2]],
+    ev: c => [
+      `firewall: ${c.srcIp} probed ${c.hostCount} hosts on ports 22,80,443,445,3389 in 30s`,
+      `IDS: SCAN TCP SYN sweep from ${c.srcIp}`,
+      c.truth === 'benign' ? `asset-mgmt: ${c.srcIp} is the authorized vulnerability scanner (Nessus) per CMDB` : `firewall: ${c.srcIp} not found in asset inventory`
+    ],
+    reco: c => `Correlate ${c.srcIp} against the CMDB — authorized vulnerability scanners trip this rule constantly (benign). If unknown, it is reconnaissance: contain the source and watch for follow-on exploitation.`
+  },
+  {
+    key: 'c2-beacon', severity: 'critical', category: 'Command and Control',
+    tactic: 'Command and Control', techniqueId: 'T1071', technique: 'Application Layer Protocol',
+    rule: 'Network · periodic beacon to low-reputation host',
+    title: c => `Possible C2 beacon from ${c.asset.hostname} to ${c.extIp}`,
+    verdicts: [['true-positive', 8], ['false-positive', 1], ['benign', 1]],
+    ev: c => [
+      `proxy: ${c.asset.ip} -> ${c.extIp} GET /${c.beaconPath} every 60s (+/- 3s jitter)`,
+      `threat-intel: ${c.extIp} flagged newly-registered domain, low reputation`,
+      `edr: beaconing process ${c.proc} with no signed publisher on ${c.asset.hostname}`
+    ],
+    reco: c => `Strong C2 indicator: regular low-jitter beaconing to a low-reputation host. Isolate ${c.asset.hostname} from the network, capture the process ${c.proc}, and block ${c.extIp} at the proxy/firewall.`
+  },
+  {
+    key: 'phishing-click', severity: 'high', category: 'Initial Access',
+    tactic: 'Initial Access', techniqueId: 'T1566', technique: 'Phishing',
+    rule: 'Email · user clicked a flagged phishing link',
+    title: c => `${c.user} clicked a phishing link on ${c.asset.hostname}`,
+    verdicts: [['true-positive', 6], ['false-positive', 2], ['benign', 2]],
+    ev: c => [
+      `email-gw: message to ${c.user} from ${c.extUser} matched phishing signature "invoice-credential-harvest"`,
+      `proxy: ${c.user} visited hxxps://${c.phishDomain}/login (credential form)`,
+      c.truth === 'true-positive' ? `idp: successful auth for ${c.user} from new ASN minutes later` : `proxy: page blocked by web filter before submission`
+    ],
+    reco: c => `Determine whether credentials were submitted. If the filter blocked the page it may be contained; if a login from a new location followed, reset ${c.user}'s password, revoke sessions, and enable step-up MFA.`
+  },
+  {
+    key: 'suspicious-powershell', severity: 'high', category: 'Execution',
+    tactic: 'Execution', techniqueId: 'T1059.001', technique: 'PowerShell',
+    rule: 'Endpoint · encoded PowerShell execution',
+    title: c => `Encoded PowerShell executed on ${c.asset.hostname}`,
+    verdicts: [['true-positive', 4], ['false-positive', 5], ['benign', 1]],
+    ev: c => [
+      `edr: powershell.exe -nop -w hidden -enc ${c.b64}... launched by ${c.user}`,
+      `edr: parent process ${c.truth === 'true-positive' ? 'winword.exe (macro)' : 'ConfigMgr agent'}`,
+      c.truth === 'false-positive' ? `cmdb: host is managed by SCCM; encoded commands are routine for software deployment` : `edr: child process reached out to ${c.extIp}`
+    ],
+    reco: c => `Decode the command and check the parent process. Spawned from Office/macro with network egress = malicious; spawned from a management agent (SCCM/Intune) is a common false positive.`
+  },
+  {
+    key: 'priv-esc', severity: 'critical', category: 'Privilege Escalation',
+    tactic: 'Privilege Escalation', techniqueId: 'T1068', technique: 'Exploitation for Privilege Escalation',
+    rule: 'Endpoint · unexpected local admin elevation',
+    title: c => `${c.user} elevated to local admin on ${c.asset.hostname}`,
+    verdicts: [['true-positive', 6], ['false-positive', 3], ['benign', 1]],
+    ev: c => [
+      `Security 4672: Special privileges assigned to ${c.user} on ${c.asset.hostname}`,
+      `Security 4732: ${c.user} added to the local Administrators group`,
+      c.truth === 'false-positive' ? `change-mgmt: approved change CR-${c.cr} grants temporary admin for software install` : `no approved change record for this elevation`
+    ],
+    reco: c => `Cross-reference against change management. An approved change (CR) makes this benign; with no record, revoke the privilege, investigate how it was obtained, and hunt for a local exploit.`
+  },
+  {
+    key: 'data-exfil', severity: 'critical', category: 'Exfiltration',
+    tactic: 'Exfiltration', techniqueId: 'T1048', technique: 'Exfiltration Over Alternative Protocol',
+    rule: 'DLP · large outbound transfer to external host',
+    title: c => `Large outbound transfer from ${c.asset.hostname} (${c.mb} MB)`,
+    verdicts: [['true-positive', 6], ['false-positive', 3], ['benign', 1]],
+    ev: c => [
+      `dlp: ${c.asset.ip} uploaded ${c.mb} MB to ${c.extIp} over ${c.proto} in 4 min`,
+      `dlp: ${c.docCount} documents matched classification "Confidential"`,
+      c.truth === 'benign' ? `cmdb: ${c.extIp} is the sanctioned backup provider endpoint` : `threat-intel: ${c.extIp} is an anonymous file-sharing service`
+    ],
+    reco: c => `Identify the destination ${c.extIp}: a sanctioned backup/SaaS endpoint is benign, an anonymous file-share is exfiltration. If unsanctioned, block egress, preserve the host, and scope what left.`
+  },
+  {
+    key: 'impossible-travel', severity: 'high', category: 'Credential Access',
+    tactic: 'Initial Access', techniqueId: 'T1078', technique: 'Valid Accounts',
+    rule: 'Identity · impossible travel between logins',
+    title: c => `Impossible travel for ${c.user} (${c.geoA} -> ${c.geoB})`,
+    verdicts: [['true-positive', 4], ['false-positive', 5], ['benign', 1]],
+    ev: c => [
+      `idp: ${c.user} signed in from ${c.geoA} at 09:02`,
+      `idp: ${c.user} signed in from ${c.geoB} at 09:41 (1,100 km apart)`,
+      c.truth === 'false-positive' ? `idp: second login sourced from the corporate VPN egress in ${c.geoB}` : `idp: second login from residential ASN, new device`
+    ],
+    reco: c => `Check whether the second login came through a corporate VPN egress (common false positive) or a new device/ASN. If genuinely impossible, treat the account as compromised: revoke sessions and reset.`
+  },
+  {
+    key: 'mfa-fatigue', severity: 'high', category: 'Credential Access',
+    tactic: 'Credential Access', techniqueId: 'T1621', technique: 'Multi-Factor Authentication Request Generation',
+    rule: 'Identity · repeated MFA push requests',
+    title: c => `MFA push flood targeting ${c.user}`,
+    verdicts: [['true-positive', 6], ['false-positive', 2], ['benign', 2]],
+    ev: c => [
+      `idp: ${c.pushCount} MFA push requests for ${c.user} in 10 minutes, all denied`,
+      `idp: password for ${c.user} was valid on each attempt (attacker has the password)`,
+      c.truth === 'true-positive' ? `idp: one push eventually APPROVED from ${c.srcIp}` : `idp: all pushes denied; user reported the prompts`
+    ],
+    reco: c => `The password is already known to the attacker. If any push was approved, the account is compromised — reset and revoke now. Either way, move ${c.user} to number-matching/phishing-resistant MFA.`
+  },
+  {
+    key: 'av-detection', severity: 'medium', category: 'Execution',
+    tactic: 'Execution', techniqueId: 'T1204', technique: 'User Execution',
+    rule: 'Endpoint · antivirus detection',
+    title: c => `Malware detected on ${c.asset.hostname} (${c.malware})`,
+    verdicts: [['true-positive', 5], ['false-positive', 3], ['benign', 2]],
+    ev: c => [
+      `av: ${c.malware} detected in C:\\Users\\${c.user}\\Downloads\\${c.file}`,
+      c.truth === 'benign' ? `av: file is the EICAR test string (harmless AV test)` : `av: quarantine FAILED — file was already executed`,
+      `edr: ${c.truth === 'true-positive' ? 'process spawned before quarantine' : 'no child processes observed'}`
+    ],
+    reco: c => `Confirm the detection quarantined successfully and whether the file executed. EICAR test files are benign; a real sample that ran before quarantine needs host isolation and a full investigation.`
+  },
+  {
+    key: 'new-admin-account', severity: 'high', category: 'Persistence',
+    tactic: 'Persistence', techniqueId: 'T1136.001', technique: 'Create Account: Local Account',
+    rule: 'Identity · new privileged account created',
+    title: c => `New admin account "${c.newAcct}" created on ${c.asset.hostname}`,
+    verdicts: [['true-positive', 4], ['false-positive', 4], ['benign', 2]],
+    ev: c => [
+      `Security 4720: user account ${c.newAcct} was created by ${c.user}`,
+      `Security 4728: ${c.newAcct} added to Domain Admins`,
+      c.truth === 'false-positive' ? `hr/onboarding ticket HR-${c.cr} requests admin for new IT hire` : `account created outside business hours, no ticket`
+    ],
+    reco: c => `Verify against onboarding/change tickets. A legitimate IT hire is benign; an account created off-hours with no ticket and immediate Domain Admin rights is persistence — disable it and investigate the creator ${c.user}.`
+  }
+];
+
+module.exports = { FIRST, LAST, DEPTS, ROLES, SEVERITIES, SEV_RANK, VERDICTS, ARCHETYPES };
+
+});
+__def("./model", function(module, exports, require){
+// BlueShift — the SOC environment model.
+// Pure and deterministic: generateEnvironment(seed) builds a reproducible set of
+// assets and correlated SIEM alerts (each with a hidden ground-truth verdict),
+// plus query, triage and scoring helpers. No DOM, no randomness outside the seed.
+const { makeRng } = require('./rng');
+const C = require('./catalog');
+
+const DEPT_ABBR = { Finance: 'FIN', Engineering: 'ENG', Sales: 'SAL', HR: 'HR', 'IT Operations': 'ITO', Legal: 'LEG', Marketing: 'MKT', Executive: 'EXE' };
+const ROLE_ABBR = { workstation: 'WS', laptop: 'LT', 'file-server': 'FS', 'web-server': 'WEB', 'domain-controller': 'DC', database: 'DB', firewall: 'FW', 'vpn-gateway': 'VPN' };
+const BUMP = { low: 'medium', medium: 'high', high: 'critical', critical: 'critical' };
+
+function buildAssets(rng, n) {
+  const assets = [];
+  const used = new Set();
+  for (let i = 0; i < n; i++) {
+    const r = rng.weighted(C.ROLES.map(x => [x, x.weight]));
+    const dept = rng.pick(C.DEPTS);
+    let num = rng.int(1, 60), hostname;
+    do { hostname = `${DEPT_ABBR[dept]}-${ROLE_ABBR[r.role]}-${String(num).padStart(2, '0')}`; num = rng.int(1, 99); } while (used.has(hostname));
+    used.add(hostname);
+    const owner = `${rng.pick(C.FIRST)}.${rng.pick(C.LAST)}`;
+    assets.push({
+      id: 'AST-' + String(1000 + i),
+      hostname, dept, role: r.role, os: rng.pick(r.os), criticality: r.crit, owner,
+      ip: `10.${C.DEPTS.indexOf(dept)}.${C.ROLES.indexOf(r) + 1}.${rng.int(10, 240)}`
+    });
+  }
+  return assets;
+}
+
+const extIp = rng => `${rng.int(23, 198)}.${rng.int(0, 255)}.${rng.int(0, 255)}.${rng.int(1, 254)}`;
+const b64 = rng => Array.from({ length: 10 }, () => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456789'[rng.int(0, 41)]).join('');
+
+function makeContext(rng, asset) {
+  const user = `${rng.pick(C.FIRST)}.${rng.pick(C.LAST)}`;
+  return {
+    asset, user,
+    srcIp: extIp(rng), extIp: extIp(rng),
+    subnet: asset.ip.split('.').slice(0, 3).join('.') + '.0/24',
+    hostCount: rng.int(18, 120), failCount: rng.int(12, 240),
+    beaconPath: rng.pick(['api/v2/ping', 'cdn/assets', 'gate.php', 'img/1.gif', 'rpc']),
+    proc: rng.pick(['svchost32.exe', 'updater.exe', 'rundll32.exe', 'msbuild.exe', 'wscript.exe']),
+    extUser: `${rng.pick(C.FIRST)}@${rng.pick(['mail-secure', 'invoices-dept', 'docs-share', 'it-helpdesk'])}.com`,
+    phishDomain: rng.pick(['secure-login-portal', 'account-verify', 'o365-reauth', 'vpn-access']) + '.com',
+    b64: b64(rng), cr: rng.int(1000, 9999),
+    mb: rng.int(220, 4800), docCount: rng.int(40, 1200), proto: rng.pick(['HTTPS', 'FTP', 'DNS']),
+    geoA: rng.pick(['London, UK', 'Berlin, DE', 'Austin, US', 'Toronto, CA']),
+    geoB: rng.pick(['Lagos, NG', 'Manila, PH', 'São Paulo, BR', 'Kyiv, UA']),
+    pushCount: rng.int(8, 60),
+    malware: rng.pick(['Trojan.GenericKD', 'Win32/Emotet', 'EICAR-Test', 'Ransom.Conti', 'PUA.CoinMiner']),
+    file: rng.pick(['invoice_2024.doc.exe', 'setup.scr', 'payroll.xlsm', 'update.bin']),
+    newAcct: rng.pick(['svc_backup', 'admin2', 'helpdesk_tmp', 'ops_adm'])
+  };
+}
+
+function buildAlerts(rng, assets, n) {
+  const alerts = [];
+  let minutesAgo = rng.int(2, 9);
+  for (let i = 0; i < n; i++) {
+    const arch = rng.pick(C.ARCHETYPES);
+    const asset = rng.pick(assets);
+    const truth = rng.weighted(arch.verdicts);
+    const ctx = makeContext(rng, asset); ctx.truth = truth;
+    let severity = arch.severity;
+    if (asset.criticality === 'critical' && severity !== 'critical' && rng.chance(0.6)) severity = BUMP[severity];
+    alerts.push({
+      id: 'AL-' + String(4100 + i),
+      archetype: arch.key, title: arch.title(ctx), severity,
+      category: arch.category, tactic: arch.tactic, techniqueId: arch.techniqueId, technique: arch.technique,
+      rule: arch.rule, asset: { id: asset.id, hostname: asset.hostname, ip: asset.ip, role: asset.role, criticality: asset.criticality, owner: asset.owner },
+      user: ctx.user, minutesAgo, events: arch.ev(ctx), recommendation: arch.reco(ctx),
+      truth,                                   // hidden ground truth (not shown until triaged)
+      status: 'new', analystVerdict: null
+    });
+    minutesAgo += rng.int(3, 55);
+  }
+  return alerts.sort((a, b) => C.SEV_RANK[b.severity] - C.SEV_RANK[a.severity] || a.minutesAgo - b.minutesAgo);
+}
+
+function generateEnvironment(seed = 1, opts = {}) {
+  const rng = makeRng(seed);
+  const assets = buildAssets(rng, opts.assets || 26);
+  const alerts = buildAlerts(rng, assets, opts.alerts || 16);
+  return { seed, assets, alerts, meta: { version: 1 } };
+}
+
+// ---- queries ----
+function filterAlerts(env, f = {}) {
+  const q = (f.query || '').toLowerCase();
+  return env.alerts.filter(a =>
+    (f.severity == null || f.severity === 'all' || a.severity === f.severity) &&
+    (f.status == null || f.status === 'all' || (f.status === 'open' ? a.status !== 'closed' : a.status === f.status)) &&
+    (!q || (a.title + ' ' + a.asset.hostname + ' ' + a.category + ' ' + a.tactic + ' ' + a.technique + ' ' + a.rule + ' ' + a.events.join(' ')).toLowerCase().includes(q))
+  );
+}
+
+function summarize(env) {
+  const bySev = { critical: 0, high: 0, medium: 0, low: 0 };
+  let open = 0, closed = 0, correct = 0;
+  for (const a of env.alerts) {
+    if (a.status === 'closed') { closed++; if (a.analystVerdict === a.truth) correct++; }
+    else { open++; bySev[a.severity]++; }
+  }
+  return { total: env.alerts.length, open, closed, correct,
+    accuracy: closed ? Math.round((correct / closed) * 100) : null,
+    bySev, assets: env.assets.length };
+}
+
+// ---- triage ----
+// Disposition one of VERDICTS. Returns { ok, correct } where correct compares the
+// analyst's call to the alert's hidden ground truth (the learning signal).
+function triageAlert(env, alertId, disposition, note) {
+  if (!C.VERDICTS.includes(disposition)) return { ok: false, reason: 'unknown disposition' };
+  const a = env.alerts.find(x => x.id === alertId);
+  if (!a) return { ok: false, reason: 'no such alert' };
+  a.status = 'closed'; a.analystVerdict = disposition; a.note = note || a.note || '';
+  return { ok: true, correct: disposition === a.truth, truth: a.truth };
+}
+function reopenAlert(env, alertId) {
+  const a = env.alerts.find(x => x.id === alertId);
+  if (!a) return { ok: false };
+  a.status = 'new'; a.analystVerdict = null; return { ok: true };
+}
+function acknowledgeAlert(env, alertId) {
+  const a = env.alerts.find(x => x.id === alertId);
+  if (!a || a.status === 'closed') return { ok: false };
+  a.status = 'investigating'; return { ok: true };
+}
+
+module.exports = { generateEnvironment, filterAlerts, summarize, triageAlert, reopenAlert, acknowledgeAlert, SEV_RANK: C.SEV_RANK, VERDICTS: C.VERDICTS };
+
+});
+__def("./ui", function(module, exports, require){
+// BlueShift — application UI (vanilla JS, no framework). The platform shell plus
+// the SIEM analyst console. State lives in memory and the view is re-rendered on
+// change; everything is driven by the deterministic model, so the UI stays a thin
+// presentation layer over tested logic.
+const Model = require('./model');
+
+const $ = sel => document.querySelector(sel);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const SEV_ORDER = ['critical', 'high', 'medium', 'low'];
+const DISPOSITIONS = [
+  { key: 'true-positive', label: 'True positive · escalate', hint: 'A real threat — escalate to an incident.' },
+  { key: 'false-positive', label: 'False positive', hint: 'The detection fired but there is no real threat.' },
+  { key: 'benign', label: 'Benign / expected', hint: 'Real activity, but authorized and expected.' }
+];
+const VERDICT_LABEL = { 'true-positive': 'a true positive', 'false-positive': 'a false positive', 'benign': 'benign / expected activity' };
+
+const STATE = { env: null, seed: 1, selected: null, filters: { severity: 'all', status: 'open', query: '' }, feedback: null };
+
+function newShift(seed) {
+  STATE.seed = seed == null ? (Date.now() % 100000) : seed;
+  STATE.env = Model.generateEnvironment(STATE.seed);
+  STATE.selected = STATE.env.alerts[0] ? STATE.env.alerts[0].id : null;
+  STATE.feedback = null;
+  render();
+}
+
+const MODULES = [
+  { key: 'siem', glyph: '◈', name: 'SIEM', sub: 'Alert triage', active: true },
+  { key: 'vuln', glyph: '◎', name: 'Vulnerability Mgmt', sub: 'Findings & remediation', soon: true },
+  { key: 'soar', glyph: '⚙', name: 'SOAR', sub: 'Response playbooks', soon: true },
+  { key: 'ai', glyph: '✦', name: 'AI Triage', sub: 'Assisted analysis', soon: true }
+];
+
+function render() {
+  const env = STATE.env, s = Model.summarize(env);
+  const shown = Model.filterAlerts(env, STATE.filters);
+  const sel = env.alerts.find(a => a.id === STATE.selected) || shown[0] || null;
+  if (sel) STATE.selected = sel.id;
+  $('#app').innerHTML = `
+    <div class="bs-shell">
+      <aside class="bs-rail">
+        <div class="bs-brand"><span class="bs-logo">◂▸</span><div><strong>BlueShift</strong><small>SOC analyst range</small></div></div>
+        <div class="bs-rail-label">Modules</div>
+        ${MODULES.map(m => `<button class="bs-mod${m.active ? ' active' : ''}${m.soon ? ' soon' : ''}" ${m.soon ? 'disabled' : ''} title="${m.soon ? 'Coming soon' : m.name}"><span class="bs-mod-glyph">${m.glyph}</span><span class="bs-mod-text"><b>${m.name}</b><small>${m.sub}</small></span>${m.soon ? '<span class="bs-soon">soon</span>' : ''}</button>`).join('')}
+        <div class="bs-rail-foot">Fully simulated range<br>Seed #${env.seed}</div>
+      </aside>
+      <main class="bs-main">
+        <header class="bs-top">
+          <div><div class="bs-eyebrow">Security operations · SIEM</div><h1>Alert triage console</h1></div>
+          <div class="bs-top-actions">
+            <div class="bs-score" title="Your triage accuracy this shift"><span>Accuracy</span><strong>${s.accuracy == null ? '—' : s.accuracy + '%'}</strong><small>${s.correct}/${s.closed} graded</small></div>
+            <button class="bs-btn" id="bsNewShift">↻ New shift</button>
+          </div>
+        </header>
+        <section class="bs-kpis">
+          <article class="bs-kpi"><span>Open alerts</span><strong>${s.open}</strong><em>${s.total} this shift</em></article>
+          <article class="bs-kpi k-critical"><span>Critical</span><strong>${s.bySev.critical}</strong></article>
+          <article class="bs-kpi k-high"><span>High</span><strong>${s.bySev.high}</strong></article>
+          <article class="bs-kpi k-medium"><span>Medium</span><strong>${s.bySev.medium}</strong></article>
+          <article class="bs-kpi"><span>Closed</span><strong>${s.closed}</strong><em>${s.accuracy == null ? 'triage to score' : s.accuracy + '% correct'}</em></article>
+        </section>
+        <div class="bs-toolbar">
+          <label>Severity <select id="bsSev">${['all', ...SEV_ORDER].map(v => `<option value="${v}"${STATE.filters.severity === v ? ' selected' : ''}>${v === 'all' ? 'All' : v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></label>
+          <label>Status <select id="bsStatus">${['open', 'all', 'new', 'investigating', 'closed'].map(v => `<option value="${v}"${STATE.filters.status === v ? ' selected' : ''}>${v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></label>
+          <input id="bsSearch" type="search" value="${esc(STATE.filters.query)}" placeholder="Search alerts, assets, log lines, techniques…"/>
+          <span class="bs-count">${shown.length} shown</span>
+        </div>
+        <div class="bs-split">
+          <section class="bs-queue" aria-label="Alert queue">${shown.map(a => queueRow(a, sel)).join('') || '<div class="bs-empty">No alerts match the current filters.</div>'}</section>
+          <section class="bs-detail" aria-label="Alert detail">${sel ? detail(sel) : '<div class="bs-empty">Select an alert to investigate.</div>'}</section>
+        </div>
+      </main>
+    </div>`;
+  wire();
+}
+
+function queueRow(a, sel) {
+  const stateDot = a.status === 'closed' ? (a.analystVerdict === a.truth ? 'ok' : 'bad') : a.status === 'investigating' ? 'wip' : '';
+  return `<button class="bs-row sev-${a.severity}${sel && a.id === sel.id ? ' selected' : ''}${a.status === 'closed' ? ' closed' : ''}" data-alert="${a.id}">
+    <span class="bs-sev sev-${a.severity}">${a.severity[0].toUpperCase()}</span>
+    <span class="bs-row-main"><b>${esc(a.title)}</b><small>${esc(a.asset.hostname)} · ${esc(a.category)} · ${esc(a.techniqueId)} · ${a.minutesAgo}m ago</small></span>
+    ${stateDot ? `<span class="bs-row-state ${stateDot}" title="${a.status}">${stateDot === 'ok' ? '✓' : stateDot === 'bad' ? '✗' : '●'}</span>` : ''}
+  </button>`;
+}
+
+function detail(a) {
+  const closed = a.status === 'closed';
+  const fb = STATE.feedback && STATE.feedback.id === a.id ? STATE.feedback : null;
+  return `
+    <div class="bs-detail-head">
+      <span class="bs-sev-badge sev-${a.severity}">${a.severity.toUpperCase()}</span>
+      <div><h2>${esc(a.title)}</h2><div class="bs-detail-meta"><span class="bs-chip">${esc(a.category)}</span><span class="bs-chip ghost">ATT&CK · ${esc(a.techniqueId)} ${esc(a.technique)}</span><span class="bs-mono">${esc(a.id)}</span></div></div>
+    </div>
+    <div class="bs-asset-card">
+      <div><span>Asset</span><b>${esc(a.asset.hostname)}</b></div>
+      <div><span>Address</span><b class="bs-mono">${esc(a.asset.ip)}</b></div>
+      <div><span>Role</span><b>${esc(a.asset.role)}</b></div>
+      <div><span>Criticality</span><b class="crit-${a.asset.criticality}">${esc(a.asset.criticality)}</b></div>
+      <div><span>Owner</span><b>${esc(a.asset.owner)}</b></div>
+      <div><span>Detection</span><b>${esc(a.rule)}</b></div>
+    </div>
+    <div class="bs-section-label">Raw events</div>
+    <pre class="bs-log">${a.events.map(e => esc(e)).join('\n')}</pre>
+    <div class="bs-reco"><b>Recommended response</b><p>${esc(a.recommendation)}</p></div>
+    ${fb ? `<div class="bs-feedback ${fb.correct ? 'good' : 'bad'}">${fb.correct ? '✓ Correct' : '✗ Not quite'} — this alert was <b>${esc(VERDICT_LABEL[fb.truth])}</b>. You called it <b>${esc(VERDICT_LABEL[fb.verdict])}</b>.</div>` : ''}
+    <div class="bs-section-label">Disposition</div>
+    ${closed
+      ? `<div class="bs-closed-note">Closed as <b>${esc(VERDICT_LABEL[a.analystVerdict])}</b>. <button class="bs-link" data-reopen="${a.id}">Reopen</button></div>`
+      : `<div class="bs-dispo">${DISPOSITIONS.map(d => `<button class="bs-btn dispo" data-dispo="${d.key}" data-alert="${a.id}" title="${esc(d.hint)}">${esc(d.label)}</button>`).join('')}${a.status !== 'investigating' ? `<button class="bs-btn ghost" data-ack="${a.id}">Start investigating</button>` : '<span class="bs-inv">● investigating</span>'}</div>`}
+  `;
+}
+
+function wire() {
+  $('#bsNewShift').addEventListener('click', () => newShift());
+  $('#bsSev').addEventListener('change', e => { STATE.filters.severity = e.target.value; render(); });
+  $('#bsStatus').addEventListener('change', e => { STATE.filters.status = e.target.value; render(); });
+  const search = $('#bsSearch');
+  search.addEventListener('input', e => { STATE.filters.query = e.target.value; render(); const n = $('#bsSearch'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } });
+  document.querySelectorAll('[data-alert]').forEach(b => b.addEventListener('click', e => {
+    if (e.target.closest('[data-dispo],[data-ack],[data-reopen]')) return;
+    STATE.selected = b.dataset.alert; STATE.feedback = null; render();
+  }));
+  document.querySelectorAll('[data-ack]').forEach(b => b.addEventListener('click', () => { Model.acknowledgeAlert(STATE.env, b.dataset.ack); render(); }));
+  document.querySelectorAll('[data-reopen]').forEach(b => b.addEventListener('click', () => { Model.reopenAlert(STATE.env, b.dataset.reopen); STATE.feedback = null; render(); }));
+  document.querySelectorAll('[data-dispo]').forEach(b => b.addEventListener('click', () => {
+    const r = Model.triageAlert(STATE.env, b.dataset.alert, b.dataset.dispo);
+    if (r.ok) STATE.feedback = { id: b.dataset.alert, correct: r.correct, truth: r.truth, verdict: b.dataset.dispo };
+    render();
+  }));
+}
+
+function boot() { newShift(1); }
+if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', boot);
+module.exports = { boot, STATE, newShift };
+
+});
+require('./ui');
+</script></body>
+</html>
